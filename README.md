@@ -1,6 +1,6 @@
-# JDBC Cinema Demo — Демонстрация JDBC + PostgreSQL
+# JDBC Board Games Rental — Демонстрация JDBC + PostgreSQL
 
-Консольное приложение на **Java 21** + **JDBC** + **PostgreSQL**, демонстрирующее работу с реляционной БД на примере системы кинотеатра.
+Консольное приложение на **Java 21** + **JDBC** + **PostgreSQL**, демонстрирующее работу с реляционной БД на примере системы аренды настольных игр.
 
 ## Требования
 
@@ -11,16 +11,16 @@
 ### Быстрый запуск PostgreSQL через Docker
 
 ```bash
-docker run -d --name postgres-cinema \
-  -e POSTGRES_PASSWORD=postgres \
+docker run --name postgres-games \
+  -e POSTGRES_PASSWORD=mysecretpassword \
   -p 5432:5432 \
-  postgres:17
+  -d postgres:17
 ```
 
 Создайте базу данных:
 
 ```bash
-docker exec -it postgres-cinema psql -U postgres -c "CREATE DATABASE cinema;"
+docker exec -it postgres-games psql -U postgres -c "CREATE DATABASE boardgames;"
 ```
 
 ## Как запустить
@@ -28,14 +28,14 @@ docker exec -it postgres-cinema psql -U postgres -c "CREATE DATABASE cinema;"
 1. **Настройте** подключение в `src/main/resources/application.properties`:
 
    ```properties
-   db.url=jdbc:postgresql://localhost:5432/cinema
+   db.url=jdbc:postgresql://localhost/game_rentals
    db.username=postgres
-   db.password=postgres
+   db.password=mysecretpassword
    ```
 
 2. **Запустите**:
    ```bash
-   mvn clean compile exec:java
+   mvn clean compile exec:java -Dexec.mainClass=com.gamerentals.MainGames
    ```
 
 Приложение автоматически создаст таблицы и заполнит тестовыми данными.
@@ -43,70 +43,100 @@ docker exec -it postgres-cinema psql -U postgres -c "CREATE DATABASE cinema;"
 ## Структура проекта
 
 ```
-JDBC/
+boardgames-demo/
 ├── pom.xml                              # Maven: PostgreSQL, HikariCP, SLF4J
 ├── src/main/
 │   ├── java/com/cinema/
-│   │   ├── Main.java                    # Точка входа + интерактивное меню
+│   │   ├── MainGames.java                    # Точка входа + интерактивное меню
 │   │   ├── db/
 │   │   │   ├── ConnectionManager.java   # HikariCP connection pool
-│   │   │   └── SchemaInitializer.java   # DDL + тестовые данные
-│   │   ├── model/                       # POJO-модели (7 классов)
-│   │   ├── dao/                         # DAO — CRUD (7 классов)
+│   │   │   └── SchemaInitializerGames.java   # DDL + тестовые данные
+│   │   ├── model/                       # POJO-модели (6 классов)
+│   │   │   ├── Game.java
+│   │   │   ├── Client.java
+│   │   │   ├── Box.java
+│   │   │   ├── BoxRent.java
+│   │   │   ├── GameAttraction.java
+│   │   │   └── GameSession.java
+│   │   ├── dao/                         # DAO — CRUD (6 классов)
+│   │   │   ├── GameDao.java
+│   │   │   ├── ClientDao.java
+│   │   │   ├── BoxDao.java
+│   │   │   ├── BoxRentDao.java
+│   │   │   ├── GameAttractionDao.java
+│   │   │   └── GameSessionDao.java
 │   │   └── service/
-│   │       ├── CrudDemoService.java     # Демо CRUD-операций
-│   │       └── BusinessQueryService.java # 10 бизнес-запросов
+│   │       ├── GameCrudDemoService.java     # Демо CRUD-операций
+│   │       └── GameBusinessQueryService.java # 12 бизнес-запросов
 │   └── resources/
 │       ├── application.properties       # Конфигурация БД
 │       ├── logback.xml                  # Логирование
-│       └── schema.sql                   # DDL-скрипт
+│       └── schema_games.sql             # DDL-скрипт для игр
 └── README.md
 ```
 
-## Схема БД (8 таблиц)
+## Схема БД (6 таблиц)
 
-| Таблица         | PK                          | Описание                           |
-| --------------- | --------------------------- | ---------------------------------- |
-| **Посетитель**  | `id_посетителя` (SERIAL)    | Посетитель кинотеатра              |
-| **Зал**         | `номер_зала` (SMALLSERIAL)  | Кинозал (Стандарт/VIP/IMAX)        |
-| **Место**       | `(номер_места, номер_зала)` | Место в зале (составной PK)        |
-| **Фильм**       | `id_фильма` (SERIAL)        | Фильм                              |
-| **Жанр**        | `id_жанра` (SERIAL)         | Жанр                               |
-| **Жанр_фильма** | `(id_жанра, id_фильма)`     | M:N связь фильм↔жанр               |
-| **Сеанс**       | `id_сеанса` (SERIAL)        | Сеанс (зал + фильм + время + цена) |
-| **Билет**       | `id_билета` (SERIAL)        | Билет (посетитель + сеанс + место) |
+| Таблица           | Первичный ключ              | Описание                                      |
+| ----------------- | --------------------------- | --------------------------------------------- |
+| **games**         | `id` (GENERATED)            | Настольная игра (название, авторы, сложность) |
+| **clients**       | `pass_number` (VARCHAR(11)) | Клиент (формат: `"8120 900311"`)              |
+| **boxes**         | `(id, game_id)`             | Коробка игры (составной PK, статус)           |
+| **box_rent**      | `id` (GENERATED)            | Аренда коробки (клиент, даты, штраф)          |
+| **game_attraction** | `id` (GENERATED)          | Игротека: сессия игры в зале (без результата) |
+| **game_session**  | `id` (GENERATED)            | Игровая сессия с результатом (победа/поражение) |
+
+### Особенности схемы
+
+- **Составной ключ `boxes(id, game_id)`**: позволяет нумеровать коробки локально внутри каждой игры (коробка `#1` у «Монополии» и «Уно» — разные записи).
+- **Формат паспорта**: `pass_number ~ '^\d{4} \d{6}$'` — проверка на уровне БД.
+- **Внешние ключи с `ON DELETE CASCADE`**: удаление игры автоматически удаляет связанные коробки, аренды и сессии.
+- **CHECK-ограничения**: валидация сложности (`'Легко'`, `'Нормально'`, `'Сложно'`), статуса коробки (`0.00..1.00`), временных интервалов.
 
 ## Демонстрируемые техники JDBC
 
 | Техника                             | Где                          | Описание                                            |
 | ----------------------------------- | ---------------------------- | --------------------------------------------------- |
 | **PreparedStatement**               | Все DAO                      | Параметризованные запросы (защита от SQL-injection) |
-| **Statement.RETURN_GENERATED_KEYS** | DAO insert                   | Получение сгенерированных ключей                    |
-| **Batch Insert**                    | `SeatDao.batchInsert()`      | Массовая вставка через `addBatch/executeBatch`      |
-| **Транзакции**                      | `TicketDao.purchaseTicket()` | `setAutoCommit(false)` + `commit/rollback`          |
+| **Batch Insert**                    | `BoxDao.batchInsert()`       | Массовая вставка коробок через `addBatch/executeBatch` |
+| **Транзакции**                      | `BoxRentDao.rentBox()`       | `setAutoCommit(false)` + `commit/rollback` при аренде |
 | **Connection Pool**                 | `ConnectionManager`          | HikariCP — пул соединений                           |
 | **ResultSet → POJO**                | Все DAO                      | Маппинг результатов в объекты                       |
-| **Составной ключ**                  | `SeatDao`                    | Работа с `(номер_места, номер_зала)`                |
-| **MONEY тип**                       | `ScreeningDao`               | Работа с PostgreSQL `MONEY`                         |
-| **TIMESTAMPTZ**                     | `ScreeningDao`, `TicketDao`  | Работа с временными зонами                          |
-| **ON CONFLICT DO NOTHING**          | `FilmDao.addGenre()`         | Upsert-паттерн                                      |
-| **Text blocks**                     | `BusinessQueryService`       | Java 21 многострочные строки                        |
-| **Pattern matching switch**         | Модели                       | `switch` expressions                                |
+| **Составной ключ**                  | `BoxDao`                     | Работа с `(id, game_id)` в WHERE/INSERT             |
+| **TIMESTAMPTZ**                     | Все сервисы                  | Работа с временными зонами (`OffsetDateTime`)       |
+| **Interval arithmetic**             | `GameBusinessQueryService`   | Расчёт длительности аренды в PostgreSQL             |
+| **Text blocks**                     | `GameBusinessQueryService`   | Java 21 многострочные строки для SQL                |
+| **Pattern matching switch**         | Модели, сервисы              | `switch` expressions для форматирования             |
+| **Check overlap query**             | `GameAttractionDao`, `GameSessionDao` | Предотвращение пересекающихся сессий          |
+| **Generated keys**                  | `GameDao`, `BoxRentDao`      | Получение `id` после `INSERT`                       |
 
-## 10 Бизнес-запросов
+## 12 Бизнес-запросов
 
-| #   | Запрос                       | SQL-техники                           |
-| --- | ---------------------------- | ------------------------------------- |
-| 1   | **Выручка по фильмам**       | JOIN (4 таблицы), SUM, GROUP BY       |
-| 2   | **Заполняемость залов**      | LEFT JOIN, COUNT, процентный расчёт   |
-| 3   | **Топ-5 популярных фильмов** | COUNT, ORDER BY DESC, LIMIT           |
-| 4   | **Расписание на дату**       | PreparedStatement, TO_CHAR, DATE cast |
-| 5   | **История посещений**        | JOIN (6 таблиц), параметризованный    |
-| 6   | **Популярность жанров**      | JOIN через 4 таблицы, COUNT DISTINCT  |
-| 7   | **Свободные места**          | LEFT JOIN + IS NULL (anti-join)       |
-| 8   | **Средний чек по залам**     | AVG, MIN, MAX, ROUND                  |
-| 9   | **Активные посетители**      | HAVING, BETWEEN, агрегация            |
-| 10  | **Пересечение сеансов**      | Self-join, интервальное сравнение     |
+| #   | Запрос                          | SQL-техники                                      |
+| --- | ------------------------------- | ------------------------------------------------ |
+| 1   | **Выручка по играм**            | JOIN (3 таблицы), SUM(fine), AVG(длительность)   |
+| 2   | **Загруженность коробок**       | CASE, COUNT DISTINCT, процентный расчёт          |
+| 3   | **Топ-5 популярных игр**        | COUNT, GROUP BY, ORDER BY DESC, LIMIT            |
+| 4   | **Активные аренды на дату**     | PreparedStatement, диапазон дат, JOIN clients    |
+| 5   | **История аренд клиента**       | Параметризованный запрос, форматирование дат     |
+| 6   | **Популярность по сложности**   | GROUP BY difficulty, агрегация по играм/арендам  |
+| 7   | **Доступные коробки для игры**  | LEFT JOIN + IS NULL для поиска свободных         |
+| 8   | **Средняя длительность аренды** | EXTRACT(EPOCH FROM ...), MIN/MAX интервалов      |
+| 9   | **Топ-активные клиенты**        | HAVING COUNT >= 2, агрегация по паспорту         |
+| 10  | **Конфликты игровых сессий**    | Self-join с проверкой пересечения интервалов     |
+| 11  | **Статистика игротки**          | Вечерние сессии, средняя длительность, уникальные клиенты |
+| 12  | **Win-rate по играм**           | CASE WHEN для подсчёта побед, процентный расчёт  |
+
+### Пример: проверка пересечения сессий
+```sql
+-- Находит пересекающиеся сессии одного клиента для одной игры
+SELECT COUNT(*) FROM game_session 
+WHERE client_pass_number = ? 
+  AND game_id = ? 
+  AND start_time < ?    -- новая сессия начинается до конца старой
+  AND end_time > ?      -- новая сессия заканчивается после начала старой
+```
+
 
 ## Зависимости
 
@@ -114,5 +144,21 @@ JDBC/
 | ----------------- | ------ | ---------------------- |
 | `postgresql`      | 42.7.5 | PostgreSQL JDBC Driver |
 | `HikariCP`        | 6.2.1  | Connection Pool        |
-| `slf4j-api`       | 2.0.16 | Logging API            |
-| `logback-classic` | 1.5.15 | Logging Implementation |
+
+## Тестовые данные
+
+При инициализации создаются:
+
+| Сущность   | Количество | Примеры                          |
+| ---------- | ---------- | -------------------------------- |
+| **games**  | 10         | Монополия, Уно, Пандемия, Диксит |
+| **clients**| 10         | Паспорта `8120 900311` … `900320`|
+| **boxes**  | 24         | 2-4 коробки на игру              |
+| **box_rent**| 12        | Активные + завершённые аренды    |
+| **game_attraction** | 10 | Сессии в игротке                |
+| **game_session** | 25+  | Сессии с результатом (победа/поражение) |
+
+### Сложность игр
+- **Легко**: Монополия, Уно, Диксит, Тик-так-бумм, Имаджинариум
+- **Нормально**: Каркассон, Колонизаторы, Экивоки
+- **Сложно**: Пандемия, 7 Чудес
