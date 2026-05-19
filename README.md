@@ -20,7 +20,7 @@ docker run --name postgres-games \
 Создайте базу данных:
 
 ```bash
-docker exec -it postgres-games psql -U postgres -c "CREATE DATABASE boardgames;"
+docker exec -it postgres-games psql -U postgres -c "CREATE DATABASE game_rentals;"
 ```
 
 ## Как запустить
